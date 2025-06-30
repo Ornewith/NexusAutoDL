@@ -11,6 +11,7 @@ import numpy as np
 import win32api
 import win32con
 import win32gui
+from typing import Tuple
 
 user32 = ctypes.windll.user32
 
@@ -74,7 +75,7 @@ class System:
         return sift, vortex_descriptors, website_descriptors, click_descriptors, understood_descriptors, \
                staging_descriptors, matcher
 
-    def _init_screen_capture(self) -> (mss.mss, dict):
+    def _init_screen_capture(self) -> Tuple[mss.mss, dict]:
         screen = mss.mss()
         mon = screen.monitors[0]
 
@@ -93,18 +94,21 @@ class System:
         return screen, monitor
 
     @staticmethod
-    def _load_assets() -> (np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray):
+    def _load_assets() -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         vortex_path = "assets/VortexDownloadButton.png"
         web_path = "assets/WebsiteDownloadButton.png"
         click_path = "assets/ClickHereButton.png"
         understood_path = "assets/UnderstoodButton.png"
         staging_path = "assets/StagingButton.png"
 
+        assets = []
         for path in [vortex_path, web_path, click_path, understood_path, staging_path]:
             if os.path.isfile(path):
-                yield cv2.cvtColor(cv2.imread(path), cv2.COLOR_BGR2RGB)
+                assets.append(cv2.cvtColor(cv2.imread(path), cv2.COLOR_BGR2RGB))
             else:
                 raise FileNotFoundError(f"Asset {path} not found")
+
+        return tuple(assets)
 
     def capture_screen(self) -> np.ndarray:
         img = np.array(self.screen.grab(self.v_monitor))
@@ -128,15 +132,20 @@ class System:
 
         matches = self.matcher.knnMatch(descriptors, screenshot_desc, k=2)
 
-        points = np.array([screenshot_keypoints[m.trainIdx].pt for m, _ in matches if m.distance < threshold]).astype(
-            np.int32)
+        points = np.array([screenshot_keypoints[m.trainIdx].pt for m, _ in matches if m.distance < threshold])
 
-        if bbox:
+        if bbox is not None and points.size > 0:
             points = np.array([p for p in points if bbox[0] < p[0] < bbox[2] and bbox[1] < p[1] < bbox[3]])
+
+        if points.size == 0:
+            return None
 
         point = np.median(points, axis=0)
         if not np.isnan(point).any():
             return self.img_coords_to_mon_coords(int(point[0]), int(point[1]))
+
+        return None
+
 
     @staticmethod
     def get_monitors() -> list[tuple[int, int, int, int]]:
